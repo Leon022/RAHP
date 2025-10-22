@@ -1,4 +1,4 @@
-# Official Implementation of "From Pixels to Graphs: Open-Vocabulary Scene Graph Generation with Vision-Language Models"
+# Official Implementation of "Relation-aware Hierarchical Prompt for Open-vocabulary Scene Graph Generation"
 
 ## Introductionp
 Our paper ["Relation-aware Hierarchical Prompt for Open-vocabulary Scene Graph Generation"](https://arxiv.org/abs/2412.19021) AAAI 2025.
