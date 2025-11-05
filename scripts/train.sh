@@ -1,9 +1,7 @@
 #!/bin/bash
 
 SCRIPT_PATH=$(readlink -f "$0")
-# 2. 获取当前脚本所在的目录路径
 SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
-# 3. 计算 DATASET 路径：脚本目录的上一级目录下的 DATASET（即 ../DATASET）
 export DATASET_DIR="${SCRIPT_DIR}/../DATASET"
 
 export CUDA_VISIBLE_DEVICES=0
