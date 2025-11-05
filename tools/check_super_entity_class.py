@@ -203,7 +203,7 @@ def main(args):
     # Load entity list to process (from cate_info's "ent_cate" field)
     cate_info = load_json_data(args.cate_info_path)
     if 'vg' in args.cate_info_path:
-        entity_list = cate_info.get("ent_cate", [])  # Get all entities to process   
+        entity_list = cate_info.get("ent_cate", [])[:-1]  # Get all entities to process   
     elif 'oiv6' in args.cate_info_path:
         entity_list = cate_info.get("obj", [])  # Get all entities to process   
     if not entity_list:
