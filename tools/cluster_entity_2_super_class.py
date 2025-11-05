@@ -47,9 +47,14 @@ def load_entity_classes(dataset: str, cate_info_path: str) -> list[str]:
         cate_info = json.load(f)
     
     # Parse entity classes based on dataset
-    if "obj" not in cate_info:
-        raise KeyError(f"Category info missing required 'obj' field: {cate_info_path}")
-    obj_classes = cate_info["obj"]
+    if dataset == 'vg':
+        if "ent_cate" not in cate_info:
+            raise KeyError(f"VG Category info missing required 'obj' field: {cate_info_path}")
+        obj_classes = cate_info["ent_cate"]
+    elif dataset == 'oiv6':
+        if "obj" not in cate_info:
+            raise KeyError(f"OIV6 Category info missing required 'obj' field: {cate_info_path}")
+        obj_classes = cate_info["obj"]
     
     # Validate loaded entities
     if not isinstance(obj_classes, list) or len(obj_classes) == 0:
