@@ -63,9 +63,11 @@ The `DATASET` directory is organized roughly as follows:
 Since GLIP pre-training has seen part of VG150 test images, we remove these images and get new VG150 split and write it to `VG-SGG-with-attri.h5`. 
 Please refer to [tools/cleaned_split_GLIPunseen.ipynb](tools/cleaned_split_GLIPunseen.ipynb).
 
+If you are missing some required files (e.g., vg_cate_dict.json), please refer to [https://applink.feishu.cn/client/message/link/open?token=AmTSBNhtwIAEaQsFZKjGwAI%3D] to download or generate them.
+
 ### **Relation-Aware & Entity-Aware Prompt Generation Guide**
 This script automates the full pipeline of clustering entities into superclasses, validating clusters, generating relation-aware prompts, and converting prompts to the final JSON format.
-
+We also provide pre-generated prompts, please refer to vg_relation_aware_prompts.json and oiv6_relation_aware_prompts.json in the [https://applink.feishu.cn/client/message/link/open?token=AmTSBNhtwIAEaQsFZKjGwAI%3D] directory.
 
 #### Prerequisite: Set OpenAI API Key as Environment Variable
 Before running the script, **set your OpenAI API key as an environment variable** (avoids hardcoding keys in commands).  
