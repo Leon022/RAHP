@@ -202,7 +202,10 @@ def main(args):
     
     # Load entity list to process (from cate_info's "ent_cate" field)
     cate_info = load_json_data(args.cate_info_path)
-    entity_list = cate_info.get("obj", [])  # Get all entities to process   
+    if 'vg' in args.cate_info_path:
+        entity_list = cate_info.get("ent_cate", [])  # Get all entities to process   
+    elif 'oiv6' in args.cate_info_path:
+        entity_list = cate_info.get("obj", [])  # Get all entities to process   
     if not entity_list:
         raise KeyError("cate_info JSON missing 'ent_cate' (must be a dict of entity:predicates)")
     print(f"Loaded {len(cluster_entity_map)} clusters and {len(entity_list)} entities to process")
