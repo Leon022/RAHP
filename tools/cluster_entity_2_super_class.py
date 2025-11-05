@@ -50,7 +50,7 @@ def load_entity_classes(dataset: str, cate_info_path: str) -> list[str]:
     if dataset == 'vg':
         if "ent_cate" not in cate_info:
             raise KeyError(f"VG Category info missing required 'obj' field: {cate_info_path}")
-        obj_classes = cate_info["ent_cate"]
+        obj_classes = cate_info["ent_cate"][:-1]
     elif dataset == 'oiv6':
         if "obj" not in cate_info:
             raise KeyError(f"OIV6 Category info missing required 'obj' field: {cate_info_path}")
