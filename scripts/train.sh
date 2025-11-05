@@ -1,19 +1,24 @@
 #!/bin/bash
 
+SCRIPT_PATH=$(readlink -f "$0")
+# 2. 获取当前脚本所在的目录路径
+SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
+# 3. 计算 DATASET 路径：脚本目录的上一级目录下的 DATASET（即 ../DATASET）
+export DATASET_DIR="${SCRIPT_DIR}/../DATASET"
+
 export CUDA_VISIBLE_DEVICES=0
-export NUM_GPUS=1
+export NUM_GPUS=4
 
 echo "TRAINING OV SGDet"
 
-# MODEL_NAME='toy1111'
-MODEL_NAME='7-13-SGDet-ov-set-RAHP'
-mkdir -p /storage/data/v-liutao/VS3/OUTPUT4/${MODEL_NAME}/
-cp ./tools/train_net.py /storage/data/v-liutao/VS3/OUTPUT4/${MODEL_NAME}/
-cp ./maskrcnn_benchmark/engine/trainer.py /storage/data/v-liutao/VS3/OUTPUT4/${MODEL_NAME}/
-cp ./maskrcnn_benchmark/modeling/detector/generalized_vl_rcnn.py /storage/data/v-liutao/VS3/OUTPUT4/${MODEL_NAME}/
-cp ./maskrcnn_benchmark/modeling/rpn/vldyhead.py /storage/data/v-liutao/VS3/OUTPUT4/${MODEL_NAME}/
-cp ./maskrcnn_benchmark/modeling/relation_head/ov_classifier.py /storage/data/v-liutao/VS3/OUTPUT4/${MODEL_NAME}
-cp ./scripts/train.sh /storage/data/v-liutao/VS3/OUTPUT4/${MODEL_NAME}/
+MODEL_NAME='SGDet-set-RAHP-open-vocabulary-relation'
+mkdir -p ./OUTPUT/${MODEL_NAME}/
+cp ./tools/train_net.py ./OUTPUT/${MODEL_NAME}/
+cp ./maskrcnn_benchmark/engine/trainer.py ./OUTPUT/${MODEL_NAME}/
+cp ./maskrcnn_benchmark/modeling/detector/generalized_vl_rcnn.py ./OUTPUT/${MODEL_NAME}/
+cp ./maskrcnn_benchmark/modeling/rpn/vldyhead.py ./OUTPUT/${MODEL_NAME}/
+cp ./maskrcnn_benchmark/modeling/relation_head/ov_classifier.py ./OUTPUT/${MODEL_NAME}
+cp ./scripts/train.sh ./OUTPUT/${MODEL_NAME}/
 
 python -m torch.distributed.launch \
     --master_port 8888 --nproc_per_node=${NUM_GPUS} \
@@ -28,6 +33,6 @@ python -m torch.distributed.launch \
     SOLVER.VAL_PERIOD 6000 \
     SOLVER.CHECKPOINT_PERIOD 3000 \
     DATASETS.VG150_OPEN_VOCAB_MODE False \
-    OUTPUT_DIR /storage/data/v-liutao/VS3/OUTPUT4/${MODEL_NAME}
+    OUTPUT_DIR ./OUTPUT/${MODEL_NAME}
 
 
