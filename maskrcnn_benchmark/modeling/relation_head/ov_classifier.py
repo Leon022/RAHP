@@ -12,75 +12,47 @@ from scipy.optimize import linear_sum_assignment
 from torch import nn
 import numpy as np
 from tqdm import tqdm
+import os
+import json
 
 from ..clip_utils import build_one_text_embedding, build_text_embedding, reduced_templates, TextEncoder
 
-# Following "Towards Open-vocabulary Scene Graph Generation with Prompt-based Finetuning"
-VG150_BASE_OBJ_CATEGORIES = {
-    'human': ['boy', 'girl', 'child', 'guy', 'lady', 'man', 'men', 'person', 'people', 'woman', 'kid', 'player', 'skier', 'play', 'skate', 'surf'],
-    'animal': ['bear', 'bird', 'cat', 'cow', 'dog', 'elephant', 'giraffe', 'horse', 'sheep', 'zebra', 'animal'],
-    'transportation': ['airplane', 'bike', 'boat', 'bus', 'car', 'engine', 'motorbike', 'motorcycle', 'plane', 'skateboard', 'ski', 'surfboard', 'train', 'truck', 'vehicle', 'wheel', 'wing', 'windscreen', 'seat', 'tire', 'windshield'],
-    'furniture': ['bed', 'bench', 'chair', 'counter', 'desk', 'drawer', 'handle', 'lamp', 'pillow', 'table', 'cabinet', 'clock', 'curtain', 'shelf', 'light', 'sink', 'toilet'],
-    'clothing': ['cap', 'coat', 'glove', 'hat', 'jacket', 'jean', 'pant', 'shirt', 'shoe', 'short', 'sneaker', 'sock', 'tie', 'boot'],
-    'food': ['banana', 'fruit', 'pizza', 'glass', 'food', 'orange', 'vegetable'],
-    'product': ['bottle', 'bowl', 'fork', 'knife', 'plate', 'pot', 'bag', 'towel', 'umbrella', 'vase', 'tile', 'screen', 'box', 'logo', 'number', 'basket', 'book', 'helmet', 'kite', 'laptop', 'letter', 'paper', 'phone', 'racket', 'seat', 'cup', 'flag'],
-    'outdoor': ['beach', 'branch', 'fence', 'flower', 'hill', 'leaf', 'mountain', 'plant', 'rock', 'snow', 'street', 'tree', 'wave', 'railing', 'sidewalk'],
-    'buildings': ['board', 'building', 'door', 'roof', 'room', 'sign', 'stand', 'tower', 'trunk', 'wire', 'pole', 'post', 'track', 'house', 'window'],
-    'body Part': ['ear', 'eye', 'face', 'hair', 'hand', 'head', 'leg', 'mouth', 'neck', 'nose', 'paw', 'tail', 'arm', 'finger']
-}
-BASIC_OBJ_CLASS = list(VG150_BASE_OBJ_CATEGORIES.keys())
-TOTAL_TRIPLET = torch.load("/storage/data/v-liutao/pesudo_label/union_description_after_gpt_filter.pt")
-
 
 def load_categorical_clip_text_embedding(dataset_name):
-
+    DATASET_DIR = os.environ.get("DATASET_DIR", "./DATASET")
     if dataset_name == 'VG':
-        with open('/public/home/v-liutao/SGG/cvpods/datasets/vg_motif_anno/vg_cate_info.json', 'r') as f:
+        with open(f'{DATASET_DIR}/VG150/vg_cate_info.json', 'r') as f:
             cate_info = json.load(f)
             obj_classes = cate_info["ent_cate"][:-1]
             rel_classes = cate_info["pred_cate"][1:]
-            # use predicate background 
-            # rel_classes = cate_info["pred_cate"]
-            # zeroshot_w = build_text_embedding(obj_classes, templates=reduced_templates)
-            # zeroshot_w = zeroshot_w.cpu()
-
-
-    elif dataset_name == 'GQA':
-        with open('/mnt/petrelfs/lirongjie/project/cvpods/datasets/gqa/annotations/gqa_cate_metainfo.json', 'r') as f:
-            cate_info = json.load(f)
-        obj_classes = cate_info['ind_to_classes'][:-1]
-        rel_classes = cate_info["ind_to_predicates"][1:]
-        zeroshot_w = build_text_embedding(obj_classes, templates=reduced_templates)
-        zeroshot_w = zeroshot_w.cpu()
-
-    elif dataset_name == 'PSG':
-        with open('/mnt/petrelfs/lirongjie/project/cvpods/datasets/psg/categories_dict.json', 'r') as f:
-            cate_info = json.load(f)
-        obj_classes = cate_info['obj']
-        rel_classes = cate_info["rel"]
-        zeroshot_w = build_text_embedding(obj_classes, templates=reduced_templates)
-        zeroshot_w = zeroshot_w.cpu()
+            super_obj_classes = cate_info.get("super_ent_cate", [])
+        with open(f'{DATASET_DIR}/VG150/vg_relation_aware_prompts.json', 'r') as f:
+            relation_aware_prompts = json.load(f)
 
     elif dataset_name == 'OIV6':
-        with open('/mnt/petrelfs/lirongjie/project/cvpods/datasets/openimages/open-imagev6/annotations/categories_dict.json', 'r') as f:
+        with open(f'{DATASET_DIR}/Openimage V6/oiv6_cate_info.json', 'r') as f:
             cate_info = json.load(f)
-        obj_classes = cate_info['obj']
-        rel_classes = cate_info["rel"]
-        zeroshot_w = build_text_embedding(obj_classes, templates=reduced_templates)
-        zeroshot_w = zeroshot_w.cpu()
+            obj_classes = cate_info['obj']
+            rel_classes = cate_info["rel"]
+            super_obj_classes = cate_info.get("super_obj", [])
+        with open(f'{DATASET_DIR}/Openimage V6/oiv6_relation_aware_prompts.json', 'r') as f:
+            relation_aware_prompts = json.load(f)
 
-    return obj_classes, rel_classes
+    return obj_classes, super_obj_classes, rel_classes, relation_aware_prompts
 
 class CLIPDynamicClassifierBaseline(nn.Module):
     def __init__(self, cfg, input_dim, clip_model, clip_preprocess):
         super(CLIPDynamicClassifierBaseline, self).__init__()
         
         self.cfg = cfg
-        obj_classes, rel_classes = load_categorical_clip_text_embedding(cfg.MODEL.DYHEAD.OV.DATASET_NAME)
+        obj_classes, super_obj_classes, rel_classes, relation_aware_prompts = load_categorical_clip_text_embedding(cfg.MODEL.DYHEAD.OV.DATASET_NAME)
 
         self.clip_model = clip_model
         self.clip_preprocess = clip_preprocess
-        self.obj_classes = obj_classes
+        if len(super_obj_classes) > 0:
+            self.obj_classes = super_obj_classes
+        else:
+            self.obj_classes = obj_classes
         self.rel_classes =  rel_classes
 
         self.cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
@@ -93,15 +65,15 @@ class CLIPDynamicClassifierBaseline(nn.Module):
             print('build clip text emb tmp')
             for pred_txt in tqdm(self.rel_classes): # N_p
                 weight_list_rel = []
-                obj_classes = self.obj_classes
 
-                for ent_text in obj_classes: # N_p
-                    trp_templete_w, trp_templete_txt  = build_baseline_text_embedding(
-                    f"{ent_text} {pred_txt} something", 
-                        templates=simple_reduced_templates, text_model=self.text_encoder
-                    )
-                    trp_templete_w = trp_templete_w / trp_templete_w.norm(dim=-1, keepdim=True)
-                    weight_list_rel.append(trp_templete_w)
+                for sub_text in self.obj_classes: # N_p
+                    for obj_text in self.obj_classes:
+                        trp_templete_w, trp_templete_txt  = build_baseline_text_embedding(
+                        f"{sub_text} {pred_txt} {obj_text}", 
+                            templates=simple_reduced_templates, text_model=self.text_encoder
+                        )
+                        trp_templete_w = trp_templete_w / trp_templete_w.norm(dim=-1, keepdim=True)
+                        weight_list_rel.append(trp_templete_w)
                 # trp_templete_w_collect = torch.cat(trp_templete_w_collect, dim=0)
                 weight_list.append(torch.stack(weight_list_rel))
 
@@ -152,19 +124,19 @@ class CLIPDynamicClassifierSimple(nn.Module):
         super(CLIPDynamicClassifierSimple, self).__init__()
         
         self.cfg = cfg
-        obj_classes, rel_classes = load_categorical_clip_text_embedding(cfg.MODEL.DYHEAD.OV.DATASET_NAME)
+        obj_classes, super_obj_classes, rel_classes, relation_aware_prompts = load_categorical_clip_text_embedding(cfg.MODEL.DYHEAD.OV.DATASET_NAME)
 
         self.clip_model = clip_model
         self.clip_preprocess = clip_preprocess
-        self.obj_classes = obj_classes
+        if len(super_obj_classes) > 0:
+            self.obj_classes = super_obj_classes
+        else:
+            self.obj_classes = obj_classes
         self.rel_classes =  rel_classes
 
         self.cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
 
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07), requires_grad=False)
-
-        self.tree_type = ''
-        self.mask = torch.zeros((50,10,10))
         
         self.text_encoder = TextEncoder(clip_model)
         entity_aware_weight_list = []
@@ -172,10 +144,9 @@ class CLIPDynamicClassifierSimple(nn.Module):
             print('build clip text emb tmp')
             for pred_txt in tqdm(self.rel_classes): # N_p
                 weight_list_rel = []
-                obj_classes = list(VG150_BASE_OBJ_CATEGORIES.keys())
 
-                for sub_text in obj_classes: # N_p
-                    for obj_text in obj_classes:
+                for sub_text in self.obj_classes: # N_p
+                    for obj_text in self.obj_classes:
                         trp_templete_w, trp_templete_txt  = build_baseline_text_embedding(
                         f"{sub_text} {pred_txt} {obj_text}", 
                             templates=simple_reduced_templates, text_model=self.text_encoder
@@ -185,23 +156,28 @@ class CLIPDynamicClassifierSimple(nn.Module):
                 entity_aware_weight_list.append(torch.stack(weight_list_rel))
 
 
-        if cfg.DYNAMIC_CLIP_CLASSIFIER_WEIGHT_CACHE_PTH != ''：
+        if cfg.DYNAMIC_CLIP_CLASSIFIER_WEIGHT_CACHE_PTH != '':
             relation_aware_weight_list = torch.load(cfg.DYNAMIC_CLIP_CLASSIFIER_WEIGHT_CACHE_PTH)
         else:
             raise ValueError("DYNAMIC_CLIP_CLASSIFIER_WEIGHT_CACHE_PTH cannot be empty")
+            relation_aware_weight_list = generate_relation_aware_weight(self.rel_classes, self.obj_classes, relation_aware_prompts, self.text_encoder)
 
+        # relation_aware_weight_list List[ List[Tensor], len = super_obj_classes * super_obj_classes]
 
-        self.relation_aware_split_index = []
-        num = 0
+        self.relation_aware_split_index = [[] for _ in range(len(self.rel_classes))]
+        relation_aware_weight = []
         for cls_i in range(len(self.rel_classes)): # N_p
-            for sub_id, sub_text in enumerate(VG150_BASE_OBJ_CATEGORIES.keys()): # N_p
-                for obj_id, obj_text in enumerate(VG150_BASE_OBJ_CATEGORIES.keys()):
-                    self.relation_aware_split_index_train.append(len(self.relation_aware_split_index[num_index]))
-                    num_index += 1
+            weight_list_tmp = []
+            for sub_id, sub_text in enumerate(super_obj_classes): # N_p
+                for obj_id, obj_text in enumerate(super_obj_classes):
+                    self.relation_aware_split_index[cls_i].append(relation_aware_weight_list[cls_i][sub_id * len(super_obj_classes) + obj_id].shape[0])
+                    weight_list_tmp.append(relation_aware_weight_list[cls_i][sub_id * len(super_obj_classes) + obj_id])
+            weight_list_tmp = torch.stack(weight_list_tmp)
+            relation_aware_weight.append(weight_list_tmp)
 
         self.classifier_cache = nn.ParameterDict()
         self.classifier_cache['entity_aware_weight'] = nn.Parameter(torch.stack(entity_aware_weight_list), requires_grad=False) # Num_pred * num_ent^2 * hdim
-        self.classifier_cache['relation_aware_weight'] = nn.Parameter(torch.cat(relation_aware_weight_list, dim=0), requires_grad=False)
+        self.relation_aware_weight = relation_aware_weight
 
         if self.cfg.MODEL.DYHEAD.OV.ENABLED:
             relation_aware_weight_list_train = []
@@ -210,24 +186,15 @@ class CLIPDynamicClassifierSimple(nn.Module):
 
             for cls_i in range(len(self.rel_classes)):
                 if cls_i not in self.cfg.MODEL.DYHEAD.OV.ZS_PREDICATES:
-                    entity_aware_weight_list_train.append(entity_aware_weight_list_train[cls_i])
+                    entity_aware_weight_list_train.append(entity_aware_weight_list[cls_i])
 
-            position_weight_train, position_leaf_split_train = [], []
-            num_index = 0
             for cls_i in range(len(self.rel_classes)): # N_p
-                    if cls_i not in self.cfg.MODEL.DYHEAD.OV.ZS_PREDICATES:
-                        for sub_id, sub_text in enumerate(VG150_BASE_OBJ_CATEGORIES.keys()): # N_p
-                            for obj_id, obj_text in enumerate(VG150_BASE_OBJ_CATEGORIES.keys()):
-                                relation_aware_weight_list_train.append(relation_aware_weight_list[num_index])
-                                self.relation_aware_split_index_train.append(self.relation_aware_split_index[num_index])
-                                num_index += 1
-                    else:
-                        for sub_id, sub_text in enumerate(BASIC_OBJ_CLASS): # N_p
-                            for obj_id, obj_text in enumerate(BASIC_OBJ_CLASS):
-                                num_index += 1
+                if cls_i not in self.cfg.MODEL.DYHEAD.OV.ZS_PREDICATES:
+                    relation_aware_weight_list_train.append(relation_aware_weight[cls_i])
+                    self.relation_aware_split_index_train.append(self.relation_aware_split_index[cls_i])
 
             self.classifier_cache['entity_aware_weight_train'] = nn.Parameter(torch.stack(entity_aware_weight_list_train), requires_grad=False)
-            self.classifier_cache['relation_aware_weight_train'] = nn.Parameter(torch.cat(relation_aware_weight_list_train, dim=0), requires_grad=False)
+            self.relation_aware_weight_train = relation_aware_weight_list_train
 
     
     def forward(self, rel_hs, union_features=None, tree_features=None):
@@ -237,17 +204,17 @@ class CLIPDynamicClassifierSimple(nn.Module):
         inter_hs_norm = inter_hs / inter_hs.norm(dim=-1, keepdim=True)
 
         entity_aware_weight = self.classifier_cache['entity_aware_weight'].to(inter_hs.device)
-        relation_aware_weight = self.classifier_cache['relation_aware_weight'].to(inter_hs.device)
-        cate_split_index = self.leaf_split_index
+        relation_aware_weight = self.relation_aware_weight
+        relation_aware_split_index = self.relation_aware_split_index
         if self.cfg.MODEL.DYHEAD.OV.ENABLED:
             if self.training:
                 entity_aware_weight = self.classifier_cache['entity_aware_weight_train'].to(inter_hs.device)
-                relation_aware_weight = self.classifier_cache['relation_aware_weight_train'].to(inter_hs.device)
-                cate_split_index = self.leaf_split_index_train
+                relation_aware_weight = self.relation_aware_weight_train
+                relation_aware_split_index = self.relation_aware_split_index_train
             else:
                 entity_aware_weight = self.classifier_cache['entity_aware_weight'].to(inter_hs.device)
-                relation_aware_weight = self.classifier_cache['relation_aware_weight'].to(inter_hs.device)
-                cate_split_index = self.leaf_split_index
+                relation_aware_weight = self.relation_aware_weight
+                relation_aware_split_index = self.relation_aware_split_index
 
         # entity-aware prompt scpre
         entity_aware_weight = entity_aware_weight / entity_aware_weight.norm(dim=-1, keepdim=True)
@@ -257,33 +224,39 @@ class CLIPDynamicClassifierSimple(nn.Module):
 
         # relation-aware prompt scpre
         union_features_norm = union_features / union_features.norm(dim=-1, keepdim=True)
-        relation_aware_weight = relation_aware_weight / relation_aware_weight.norm(dim=-1, keepdim=True)
-        dis_mat_relation, _ = self.compute_scores(union_features_norm, relation_aware_weight, cate_split_index, class_num, self.cfg.MODEL.DYHEAD.OV.PROMPT_SELECT_K)
+        # relation_aware_weight = relation_aware_weight / relation_aware_weight.norm(dim=-1, keepdim=True)
+        dis_mat_relation = self.compute_scores(union_features_norm, relation_aware_weight, relation_aware_split_index, class_num, self.cfg.MODEL.DYHEAD.OV.PROMPT_SELECT_K)
 
         # final predicate score
-        cls_res = dis_mat_masked.max(-1)[0] * (1 - self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT) + dis_mat_union.max(-1)[0] * self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT# num_inst, Num_pred
+        cls_res = dis_mat_entity.max(-1)[0] * (1 - self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT) + dis_mat_relation.max(-1)[0] * self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT# num_inst, Num_pred
 
         return cls_res
     
-    def compute_scores(self, inter_hs, cate_weights_tree, cate_leaf_split_index, class_num, selct_top_k=3):
-        dis_mat_tree = (inter_hs_norm @ cate_weights_tree.permute(1, 0).reshape(inter_hs_norm.shape[-1], -1)) # num_inst,dim x Num_pred, num_ent, dim => num_inst, Num_pred, num_ent
-        dis_mat_tree = dis_mat_tree * self.logit_scale.exp()
+    def compute_scores(self, inter_hs, relation_aware_weight, relation_aware_split_index, class_num, selct_top_k=3):
+        dis_mat_rel_all = []
+        for cls_i, relation_weight in enumerate(relation_aware_weight):
+            relation_weight = relation_weight / relation_weight.norm(dim=-1, keepdim=True)
+            relation_weight = relation_weight.to(inter_hs.device)
 
-        dis_mat_leaf = torch.split(dis_mat_tree, cate_leaf_split_index, dim=-1)
-        
-        # top K
-        topK = selct_top_k
-        dis_mat_leaf_max = []
-        for leaf in dis_mat_leaf:
-            if leaf.shape[-1] >= topK:
-                dis_mat_leaf_max.append(torch.topk(leaf,k=topK,dim=-1,largest=True)[0].mean(-1))
-            else:
-                dis_mat_leaf_max.append(leaf.mean(-1))
+            dis_mat_rel = (inter_hs @ relation_weight.permute(1, 0).reshape(inter_hs.shape[-1], -1)) 
+            dis_mat_rel = dis_mat_rel * self.logit_scale.exp()
 
-        dis_mat_leaf_max = torch.stack(dis_mat_leaf_max, dim=-1)
-        dis_mat_tree_sum = dis_mat_leaf_max.reshape(dis_mat_leaf_max.shape[0],class_num,-1)
+            # split relation score by each triplet
+            dis_mat_rel_split = torch.split(dis_mat_rel, relation_aware_split_index[cls_i], dim=-1)
+            # select top K
+            dis_mat_rel_split_max = []
+            for leaf in dis_mat_rel_split:
+                if leaf.shape[-1] >= selct_top_k:
+                    dis_mat_rel_split_max.append(torch.topk(leaf,k=selct_top_k,dim=-1,largest=True)[0].mean(-1))
+                else:
+                    dis_mat_rel_split_max.append(leaf.mean(-1))
 
-        return dis_mat_tree_sum, dis_mat_tree
+            dis_mat_rel_split_max = torch.stack(dis_mat_rel_split_max, dim=-1)
+            dis_mat_rel_all.append(dis_mat_rel_split_max)
+
+        dis_mat_rel_all = torch.stack(dis_mat_rel_all, dim=-1)
+        dis_mat_rel_all = dis_mat_rel_all.transpose(0, 1)
+        return dis_mat_rel_all
     
 
 # TBD
@@ -446,6 +419,24 @@ def build_baseline_text_embedding(category, templates=simple_reduced_templates, 
 
     return text_embedding, texts
 
+def build_batch_text_embedding(texts, text_model=None):
+    run_on_gpu = torch.cuda.is_available()
+
+    if run_on_gpu:
+        text_model = text_model.to(torch.device(type='cuda'))
+
+    texts = clip.tokenize(texts).long()  # tokenize
+    if run_on_gpu:
+        texts = texts.cuda()
+        
+    text_embeddings = text_model(texts)
+    text_embeddings /= text_embeddings.norm(dim=-1, keepdim=True)
+    text_embedding = text_embeddings.mean(dim=0)
+    text_embedding /= text_embedding.norm()
+    text_embedding = text_embedding.cpu()
+
+    return text_embedding, texts
+
 def build_simple_text_embedding(category, templates=baseline_templates, text_model=None):
     run_on_gpu = torch.cuda.is_available()
 
@@ -497,6 +488,22 @@ class TextEncoder_2(nn.Module):
 
         return x
 
+
+def generate_relation_aware_weight(rel_classes, obj_classes, relation_aware_prompts, text_encoder):
+    weight_list_rel_all = []
+    for rel_class in rel_classes:
+        weight_list_rel = []
+        for sub_text in obj_classes: # N_p
+            for obj_text in obj_classes:
+                trp = f'{sub_text}_{rel_class}_{obj_text}'
+                trp_templete_w, trp_templete_txt  = build_batch_text_embedding(
+                        relation_aware_prompts[trp], text_model=text_encoder
+                        )
+                trp_templete_w = trp_templete_w / trp_templete_w.norm(dim=-1, keepdim=True)
+                weight_list_rel.append(trp_templete_w)
+        weight_list_rel_all.append(weight_list_rel)
+    
+    return weight_list_rel_all
 
 
 from torch.nn.modules.utils import _pair
