@@ -199,7 +199,7 @@ python tools/generate_relation_aware_embedding.py \
   --clip-backbone ViT-B/32 \
   --save-path ./DATASET/VG150/VG150_relation_aware_embedding.pt
 ```
-to pre-generate the `relation_aware_embedding` file. This pre-generation step ensures that the training process can directly load the required embedding data, avoiding runtime delays caused by on-the-fly embedding computation and reducing potential training interruptions due to embedding-related issues.
+to pre-generate the `relation_aware_embedding` file, and set `MODEL.DYHEAD.OV.DYNAMIC_CLIP_CLASSIFIER_WEIGHT_CACHE_PTH=relation_aware_embedding_file` in config. This pre-generation step ensures that the training process can directly load the required embedding data, avoiding runtime delays caused by on-the-fly embedding computation and reducing potential training interruptions due to embedding-related issues.
 
 ### 1. Training
 ```
