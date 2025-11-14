@@ -56,10 +56,10 @@ def load_categorical_clip_text_embedding(dataset_name: str, dataset_dir: str):
         raise NotADirectoryError(f"Not found dataset dir: {dataset_dir}")
     
     if dataset_name == "VG":
-        cate_info_path = os.path.join(dataset_dir, "VG150", "vg_cate_info.json")
+        cate_info_path = os.path.join(dataset_dir, "VG150", "vg_cate_dict.json")
         prompts_path = os.path.join(dataset_dir, "VG150", "vg_relation_aware_prompts.json")
     elif dataset_name == "OIV6":
-        cate_info_path = os.path.join(dataset_dir, "Openimage V6", "oiv6_cate_info.json")
+        cate_info_path = os.path.join(dataset_dir, "Openimage V6", "oiv6_cate_dict.json")
         prompts_path = os.path.join(dataset_dir, "Openimage V6", "oiv6_relation_aware_prompts.json")
     else:
         raise ValueError(f"Not match: {dataset_name}\n in 'VG', 'OIV6'")
