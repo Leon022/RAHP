@@ -63,11 +63,11 @@ The `DATASET` directory is organized roughly as follows:
 Since GLIP pre-training has seen part of VG150 test images, we remove these images and get new VG150 split and write it to `VG-SGG-with-attri.h5`. 
 Please refer to [tools/cleaned_split_GLIPunseen.ipynb](tools/cleaned_split_GLIPunseen.ipynb).
 
-If you are missing some required files (e.g., vg_cate_dict.json), please refer to [https://onedrive.live.com/?id=%2Fpersonal%2F3d84f776196ffd75%2FDocuments%2FRAHP%20file&noAuthRedirect=1] to download or generate them.
+If you are missing some required files (e.g., vg_cate_dict.json), please refer to [https://1drv.ms/f/c/3d84f776196ffd75/EiHmeyb9-iVFrh4JMtpAL80BeHADc5tdZXuC8wrl6XF46g?e=zz4Zkb] to download or generate them.
 
 ### **Relation-Aware & Entity-Aware Prompt Generation Guide**
 This script automates the full pipeline of clustering entities into superclasses, validating clusters, generating relation-aware prompts, and converting prompts to the final JSON format.
-We also provide pre-generated prompts, please refer to vg_relation_aware_prompts.json and oiv6_relation_aware_prompts.json in the [https://onedrive.live.com/?id=%2Fpersonal%2F3d84f776196ffd75%2FDocuments%2FRAHP%20file&noAuthRedirect=1] directory.
+We also provide pre-generated prompts, please refer to vg_relation_aware_prompts.json and oiv6_relation_aware_prompts.json in the [https://1drv.ms/f/c/3d84f776196ffd75/EiHmeyb9-iVFrh4JMtpAL80BeHADc5tdZXuC8wrl6XF46g?e=zz4Zkb] directory.
 
 #### Prerequisite: Set OpenAI API Key as Environment Variable
 Before running the script, **set your OpenAI API key as an environment variable** (avoids hardcoding keys in commands).  
