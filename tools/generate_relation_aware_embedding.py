@@ -175,9 +175,13 @@ def main():
     print(f"[INFO] Load CLIP MODEL: {args.clip_backbone}")
     clip_model = load_clip_to_cpu(args.clip_backbone)
     text_encoder = TextEncoder(clip_model)
-    
+
+    # 注意：这里使用超类替换原先的entity类别
+    # 函数返回值的顺序为：obj_classes, super_classes, rel_classes, relation_aware_prompts
+    # 通过将第一个返回值赋值给下划线(_)，我们忽略原始entity类别信息
+    # 将第二个返回值(super_classes)作为对象类别使用
     print(f"[INFO] Load {args.dataset_name} dataset...")
-    obj_classes, _, rel_classes, relation_aware_prompts = load_categorical_clip_text_embedding(
+    _, obj_classes, rel_classes, relation_aware_prompts = load_categorical_clip_text_embedding(
         dataset_name=args.dataset_name,
         dataset_dir=dataset_dir
     )
