@@ -72,10 +72,11 @@ Traditional Recall, implement based on:
 https://github.com/rowanz/neural-motifs
 """
 class SGRecall(SceneGraphEvaluation):
-    def __init__(self, result_dict, num_rel):
+    def __init__(self, result_dict, num_rel, loss_type='cross_entropy'):
         super(SGRecall, self).__init__(result_dict)
         self.num_rel = num_rel
         self.type = "recall"
+        self.loss_type = loss_type
 
     def register_container(self, mode):
         self.result_dict[mode + '_recall'] = {20: [], 50: [], 100: []}
@@ -102,13 +103,14 @@ class SGRecall(SceneGraphEvaluation):
         iou_thres = global_container['iou_thres']
 
         # directly use the rel labels produced by the post procs
-        # ce loss
-        pred_rels = np.column_stack((pred_rel_inds, 1+rel_scores[:,1:].argmax(1)))
-        pred_scores = rel_scores[:,1:].max(1)
-        
-        # focal loss
-        # pred_rels = np.column_stack((pred_rel_inds, pred_rels_cls))
-        # pred_scores = rel_scores[:,:].max(1)
+        if self.loss_type == 'cross_entropy':
+            # ce loss
+            pred_rels = np.column_stack((pred_rel_inds, 1+rel_scores[:,1:].argmax(1)))
+            pred_scores = rel_scores[:,1:].max(1)
+        else:
+            # focal loss
+            pred_rels = np.column_stack((pred_rel_inds, pred_rels_cls))
+            pred_scores = rel_scores[:,:].max(1)
 
         gt_triplets, gt_triplet_boxes, _ = _triplet(gt_rels, gt_classes, gt_boxes)
         local_container['gt_triplets'] = gt_triplets
@@ -212,39 +214,39 @@ class SGZeroShotRecall(SceneGraphEvaluation):
     def register_container(self, mode):
         self.result_dict[mode + '_zeroshot_recall'] = {20: [], 50: [], 100: []}
         self.result_dict[mode + '_seenshot_recall'] = {20: [], 50: [], 100: []}
-        self.result_dict[mode + '_seen_pair_seen_pred_recall'] = {20: [], 50: [], 100: []}
-        self.result_dict[mode + '_seen_pair_unseen_pred_recall'] = {20: [], 50: [], 100: []}
-        self.result_dict[mode + '_unseen_pair_seen_pred_recall'] = {20: [], 50: [], 100: []}
-        self.result_dict[mode + '_unseen_pair_unseen_pred_recall'] = {20: [], 50: [], 100: []}
+        # self.result_dict[mode + '_seen_pair_seen_pred_recall'] = {20: [], 50: [], 100: []}
+        # self.result_dict[mode + '_seen_pair_unseen_pred_recall'] = {20: [], 50: [], 100: []}
+        # self.result_dict[mode + '_unseen_pair_seen_pred_recall'] = {20: [], 50: [], 100: []}
+        # self.result_dict[mode + '_unseen_pair_unseen_pred_recall'] = {20: [], 50: [], 100: []}
 
     def generate_print_string(self, mode):
         result_str = 'SGG eval: '
         for k, v in self.result_dict[mode + '_zeroshot_recall'].items():
             result_str += '   zR @ %d: %.4f; ' % (k, np.mean(v))
-        result_str += ' for mode=%s, type=Zero Shot Recall.\n' % mode
+        result_str += ' for mode=%s, type=Novel Predicate Recall.\n' % mode
 
         result_str += 'SGG eval: '
         for k, v in self.result_dict[mode + '_seenshot_recall'].items():
             result_str += '   sR @ %d: %.4f; ' % (k, np.mean(v))
-        result_str += ' for mode=%s, type=Seen Shot Recall.\n' % mode
+        result_str += ' for mode=%s, type=Base Predicate Recall.\n' % mode
         # result_str += f'all/novel={self.all_count}/{self.novel_count}\n'
 
-        result_str += 'SGG eval: '
-        for k, v in self.result_dict[mode + '_seen_pair_seen_pred_recall'].items():
-            result_str += '   sR @ %d: %.4f; ' % (k, np.mean(v))
-        result_str += ' for mode=%s, type=Seen Pair Seen Pred Recall.\n' % mode
-        result_str += 'SGG eval: '
-        for k, v in self.result_dict[mode + '_seen_pair_unseen_pred_recall'].items():
-            result_str += '   sR @ %d: %.4f; ' % (k, np.mean(v))
-        result_str += ' for mode=%s, type=Seen Pair Unseen Pred Recall.\n' % mode
-        result_str += 'SGG eval: '
-        for k, v in self.result_dict[mode + '_unseen_pair_seen_pred_recall'].items():
-            result_str += '   sR @ %d: %.4f; ' % (k, np.mean(v))
-        result_str += ' for mode=%s, type=Unseen Pair Seen Pred Recall.\n' % mode
-        result_str += 'SGG eval: '
-        for k, v in self.result_dict[mode + '_unseen_pair_unseen_pred_recall'].items():
-            result_str += '   sR @ %d: %.4f; ' % (k, np.mean(v))
-        result_str += ' for mode=%s, type=Unseen Pair Unseen Pred Recall.\n' % mode
+        # result_str += 'SGG eval: '
+        # for k, v in self.result_dict[mode + '_seen_pair_seen_pred_recall'].items():
+        #     result_str += '   sR @ %d: %.4f; ' % (k, np.mean(v))
+        # result_str += ' for mode=%s, type=Seen Pair Seen Pred Recall.\n' % mode
+        # result_str += 'SGG eval: '
+        # for k, v in self.result_dict[mode + '_seen_pair_unseen_pred_recall'].items():
+        #     result_str += '   sR @ %d: %.4f; ' % (k, np.mean(v))
+        # result_str += ' for mode=%s, type=Seen Pair Unseen Pred Recall.\n' % mode
+        # result_str += 'SGG eval: '
+        # for k, v in self.result_dict[mode + '_unseen_pair_seen_pred_recall'].items():
+        #     result_str += '   sR @ %d: %.4f; ' % (k, np.mean(v))
+        # result_str += ' for mode=%s, type=Unseen Pair Seen Pred Recall.\n' % mode
+        # result_str += 'SGG eval: '
+        # for k, v in self.result_dict[mode + '_unseen_pair_unseen_pred_recall'].items():
+        #     result_str += '   sR @ %d: %.4f; ' % (k, np.mean(v))
+        # result_str += ' for mode=%s, type=Unseen Pair Unseen Pred Recall.\n' % mode
 
         return result_str
 
@@ -275,7 +277,7 @@ class SGZeroShotRecall(SceneGraphEvaluation):
         self.unseen_pair_unseen_pred = []
         for i, (s, o, p) in enumerate(gt_triplets):
             # if s not in self.unseen_obj_cats and o not in self.unseen_obj_cats:
-            if p-1 in self.unseen_predicate_cars:
+            if p in self.unseen_predicate_cars:
                 self.zeroshot_idx.append(i)
                 self.novel_count += 1
             else:
@@ -287,14 +289,14 @@ class SGZeroShotRecall(SceneGraphEvaluation):
                 self.obj_seen_pred_zero_idx.append(i)
             self.all_count += 1
 
-            if (s,o) in self.base_pair_labels_all and p-1 not in self.unseen_predicate_cars:
-                self.seen_pair_seen_pred.append(i)
-            elif (s,o) in self.base_pair_labels_all and p-1 in self.unseen_predicate_cars:
-                self.seen_pair_unseen_pred.append(i)
-            elif not (s,o) in self.base_pair_labels_all and p-1 not in self.unseen_predicate_cars:
-                self.unseen_pair_seen_pred.append(i)
-            else:
-                self.unseen_pair_unseen_pred.append(i)
+            # if (s,o) in self.base_pair_labels_all and p not in self.unseen_predicate_cars:
+            #     self.seen_pair_seen_pred.append(i)
+            # elif (s,o) in self.base_pair_labels_all and p in self.unseen_predicate_cars:
+            #     self.seen_pair_unseen_pred.append(i)
+            # elif not (s,o) in self.base_pair_labels_all and p not in self.unseen_predicate_cars:
+            #     self.unseen_pair_seen_pred.append(i)
+            # else:
+            #     self.unseen_pair_unseen_pred.append(i)
 
     def calculate_recall(self, global_container, local_container, mode):
         pred_to_gt = local_container['pred_to_gt']
@@ -323,53 +325,53 @@ class SGZeroShotRecall(SceneGraphEvaluation):
                 zero_rec_i = float(zeroshot_match) / float(len(self.seenshot_idx))
                 self.result_dict[mode + '_seenshot_recall'][k].append(zero_rec_i)
         
-        for k in self.result_dict[mode + '_seen_pair_seen_pred_recall']:
-            # Zero Shot Recall
-            match = reduce(np.union1d, pred_to_gt[:k])
-            if len(self.seen_pair_seen_pred) > 0:
-                if not isinstance(match, (list, tuple)):
-                    match_list = match.tolist()
-                else:
-                    match_list = match
-                zeroshot_match = len(self.seen_pair_seen_pred) + len(match_list) - len(set(self.seen_pair_seen_pred + match_list))
-                zero_rec_i = float(zeroshot_match) / float(len(self.seen_pair_seen_pred))
-                self.result_dict[mode + '_seen_pair_seen_pred_recall'][k].append(zero_rec_i)
+        # for k in self.result_dict[mode + '_seen_pair_seen_pred_recall']:
+        #     # Zero Shot Recall
+        #     match = reduce(np.union1d, pred_to_gt[:k])
+        #     if len(self.seen_pair_seen_pred) > 0:
+        #         if not isinstance(match, (list, tuple)):
+        #             match_list = match.tolist()
+        #         else:
+        #             match_list = match
+        #         zeroshot_match = len(self.seen_pair_seen_pred) + len(match_list) - len(set(self.seen_pair_seen_pred + match_list))
+        #         zero_rec_i = float(zeroshot_match) / float(len(self.seen_pair_seen_pred))
+        #         self.result_dict[mode + '_seen_pair_seen_pred_recall'][k].append(zero_rec_i)
         
-        for k in self.result_dict[mode + '_seen_pair_unseen_pred_recall']:
-            # Zero Shot Recall
-            match = reduce(np.union1d, pred_to_gt[:k])
-            if len(self.seen_pair_unseen_pred) > 0:
-                if not isinstance(match, (list, tuple)):
-                    match_list = match.tolist()
-                else:
-                    match_list = match
-                zeroshot_match = len(self.seen_pair_unseen_pred) + len(match_list) - len(set(self.seen_pair_unseen_pred + match_list))
-                zero_rec_i = float(zeroshot_match) / float(len(self.seen_pair_unseen_pred))
-                self.result_dict[mode + '_seen_pair_unseen_pred_recall'][k].append(zero_rec_i)
+        # for k in self.result_dict[mode + '_seen_pair_unseen_pred_recall']:
+        #     # Zero Shot Recall
+        #     match = reduce(np.union1d, pred_to_gt[:k])
+        #     if len(self.seen_pair_unseen_pred) > 0:
+        #         if not isinstance(match, (list, tuple)):
+        #             match_list = match.tolist()
+        #         else:
+        #             match_list = match
+        #         zeroshot_match = len(self.seen_pair_unseen_pred) + len(match_list) - len(set(self.seen_pair_unseen_pred + match_list))
+        #         zero_rec_i = float(zeroshot_match) / float(len(self.seen_pair_unseen_pred))
+        #         self.result_dict[mode + '_seen_pair_unseen_pred_recall'][k].append(zero_rec_i)
         
-        for k in self.result_dict[mode + '_unseen_pair_seen_pred_recall']:
-            # Zero Shot Recall
-            match = reduce(np.union1d, pred_to_gt[:k])
-            if len(self.unseen_pair_seen_pred) > 0:
-                if not isinstance(match, (list, tuple)):
-                    match_list = match.tolist()
-                else:
-                    match_list = match
-                zeroshot_match = len(self.unseen_pair_seen_pred) + len(match_list) - len(set(self.unseen_pair_seen_pred + match_list))
-                zero_rec_i = float(zeroshot_match) / float(len(self.unseen_pair_seen_pred))
-                self.result_dict[mode + '_unseen_pair_seen_pred_recall'][k].append(zero_rec_i)
+        # for k in self.result_dict[mode + '_unseen_pair_seen_pred_recall']:
+        #     # Zero Shot Recall
+        #     match = reduce(np.union1d, pred_to_gt[:k])
+        #     if len(self.unseen_pair_seen_pred) > 0:
+        #         if not isinstance(match, (list, tuple)):
+        #             match_list = match.tolist()
+        #         else:
+        #             match_list = match
+        #         zeroshot_match = len(self.unseen_pair_seen_pred) + len(match_list) - len(set(self.unseen_pair_seen_pred + match_list))
+        #         zero_rec_i = float(zeroshot_match) / float(len(self.unseen_pair_seen_pred))
+        #         self.result_dict[mode + '_unseen_pair_seen_pred_recall'][k].append(zero_rec_i)
         
-        for k in self.result_dict[mode + '_unseen_pair_unseen_pred_recall']:
-            # Zero Shot Recall
-            match = reduce(np.union1d, pred_to_gt[:k])
-            if len(self.unseen_pair_unseen_pred) > 0:
-                if not isinstance(match, (list, tuple)):
-                    match_list = match.tolist()
-                else:
-                    match_list = match
-                zeroshot_match = len(self.unseen_pair_unseen_pred) + len(match_list) - len(set(self.unseen_pair_unseen_pred + match_list))
-                zero_rec_i = float(zeroshot_match) / float(len(self.unseen_pair_unseen_pred))
-                self.result_dict[mode + '_unseen_pair_unseen_pred_recall'][k].append(zero_rec_i)
+        # for k in self.result_dict[mode + '_unseen_pair_unseen_pred_recall']:
+        #     # Zero Shot Recall
+        #     match = reduce(np.union1d, pred_to_gt[:k])
+        #     if len(self.unseen_pair_unseen_pred) > 0:
+        #         if not isinstance(match, (list, tuple)):
+        #             match_list = match.tolist()
+        #         else:
+        #             match_list = match
+        #         zeroshot_match = len(self.unseen_pair_unseen_pred) + len(match_list) - len(set(self.unseen_pair_unseen_pred + match_list))
+        #         zero_rec_i = float(zeroshot_match) / float(len(self.unseen_pair_unseen_pred))
+        #         self.result_dict[mode + '_unseen_pair_unseen_pred_recall'][k].append(zero_rec_i)
 
 """
 No Graph Constraint Mean Recall
@@ -558,21 +560,23 @@ class SGMeanRecall(SceneGraphEvaluation):
 
             sum_recall_base = 0
             for idx in self.seen_pred_cats:
-                if len(self.result_dict[mode + '_mean_recall_collect'][k][idx+1]) == 0:
+                if idx == 0:
+                    continue
+                if len(self.result_dict[mode + '_mean_recall_collect'][k][idx]) == 0:
                     tmp_recall = 0.0
                 else:
-                    tmp_recall = np.mean(self.result_dict[mode + '_mean_recall_collect'][k][idx+1])
+                    tmp_recall = np.mean(self.result_dict[mode + '_mean_recall_collect'][k][idx])
                 self.result_dict[mode + '_mean_recall_list_base'][k].append(tmp_recall)
                 sum_recall_base += tmp_recall
 
-            self.result_dict[mode + '_mean_recall_base'][k] = sum_recall_base / float(len(self.seen_pred_cats))
+            self.result_dict[mode + '_mean_recall_base'][k] = sum_recall_base / float(len(self.seen_pred_cats)-1)
 
             sum_recall_novel = 0
             for idx in self.unseen_pred_cats:
-                if len(self.result_dict[mode + '_mean_recall_collect'][k][idx+1]) == 0:
+                if len(self.result_dict[mode + '_mean_recall_collect'][k][idx]) == 0:
                     tmp_recall = 0.0
                 else:
-                    tmp_recall = np.mean(self.result_dict[mode + '_mean_recall_collect'][k][idx+1])
+                    tmp_recall = np.mean(self.result_dict[mode + '_mean_recall_collect'][k][idx])
                 self.result_dict[mode + '_mean_recall_list_novel'][k].append(tmp_recall)
                 sum_recall_novel += tmp_recall
 
