@@ -100,6 +100,8 @@ class VG150Dataset(torch.utils.data.Dataset):
             split_key=split_key,
             keep_base_classes=(self.split=='train' and self.open_vocabulary_mode),
             keep_base_predicates=(self.split=='train' and self.open_predicate_mode),
+            unseen_predicate_category = self.unseen_predicate_category,
+            seen_predicate_category = self.seen_predicate_category,
         )
 
         self.filenames, self.img_info = load_image_filenames(img_dir, image_file) # length equals to split_mask
@@ -371,7 +373,7 @@ def load_image_filenames(img_dir, image_file):
     return fns, img_info
 
 
-def load_graphs(roidb_file, split, num_im, num_val_im, filter_empty_rels, filter_non_overlap, split_key='split', keep_base_classes=False, keep_base_predicates=False):
+def load_graphs(roidb_file, split, num_im, num_val_im, filter_empty_rels, filter_non_overlap, split_key='split', keep_base_classes=False, keep_base_predicates=False, unseen_predicate_category=None, seen_predicate_category=None):
     """
     Load the file containing the GT boxes and relations, as well as the dataset split
     Parameters:
@@ -404,7 +406,7 @@ def load_graphs(roidb_file, split, num_im, num_val_im, filter_empty_rels, filter
         image_index = image_index[:num_im]
     if num_val_im > 0:
         if split == 'val':
-            image_index = image_index[:5000]
+            image_index = image_index[:num_val_im]
         elif split == 'train':
             image_index = image_index[num_val_im:]
 
@@ -500,8 +502,8 @@ def load_graphs(roidb_file, split, num_im, num_val_im, filter_empty_rels, filter
             seen_rels = []
             for r in rels:
                 if split == 'train':
-                    if r[2] not in self.unseen_predicate_category:
-                        seen_rels.append([r[0], r[1], self.seen_predicate_category.index(r[2])])
+                    if r[2] not in unseen_predicate_category:
+                        seen_rels.append([r[0], r[1], seen_predicate_category.index(r[2])])
                         # seen_rels.append([r[0], r[1], r[2]])
             if len(seen_rels) == 0:
                 split_mask[image_index[i]] = 0
