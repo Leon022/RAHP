@@ -99,10 +99,10 @@ def build_batch_text_embedding(texts: list, text_model: TextEncoder) -> tuple[to
     with torch.no_grad():
         text_embeddings = text_model(text_tokens)
         text_embeddings /= text_embeddings.norm(dim=-1, keepdim=True) 
-    avg_embedding = text_embeddings.mean(dim=0)
-    avg_embedding /= avg_embedding.norm() 
+    # avg_embedding = text_embeddings.mean(dim=0)
+    # avg_embedding /= avg_embedding.norm() 
     
-    return avg_embedding.cpu(), text_tokens.cpu()
+    return text_embeddings.cpu(), text_tokens.cpu()
 
 
 def generate_relation_aware_weight(
