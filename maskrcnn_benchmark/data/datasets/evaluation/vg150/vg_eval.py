@@ -124,7 +124,7 @@ def do_vg_evaluation(
         result_dict = {}
         evaluator = {}
         # tradictional Recall@K
-        eval_recall = SGRecall(result_dict, num_rel_category)
+        eval_recall = SGRecall(result_dict, num_rel_category, cfg.MODEL.DYHEAD.OV.RELATION_LOSS)
         eval_recall.register_container(mode)
         evaluator['eval_recall'] = eval_recall
 
@@ -158,9 +158,9 @@ def do_vg_evaluation(
         eval_ng_mean_recall.register_container(mode)
         evaluator['eval_ng_mean_recall'] = eval_ng_mean_recall
 
-        eval_stagewise_recall = SGStagewiseRecall(cfg, predicates_categories, result_dict)
-        eval_stagewise_recall.register_container(mode)
-        evaluator['eval_stagewise_recall'] = eval_stagewise_recall
+        # eval_stagewise_recall = SGStagewiseRecall(cfg, predicates_categories, result_dict)
+        # eval_stagewise_recall.register_container(mode)
+        # evaluator['eval_stagewise_recall'] = eval_stagewise_recall
 
         # eval_rel_vec_recall = SGRelVecRecall(cfg, result_dict, predicates_categories)
         # eval_rel_vec_recall.register_container(mode)
@@ -192,7 +192,7 @@ def do_vg_evaluation(
         result_str += eval_mean_recall.generate_print_string(mode)
         result_str += eval_ng_mean_recall.generate_print_string(mode)
         # stagewise
-        result_str += eval_stagewise_recall.generate_print_string(mode)
+        # result_str += eval_stagewise_recall.generate_print_string(mode)
         # result_str += eval_rel_vec_recall.generate_print_string(mode)
 
         """add for seen and unseen performance"""
@@ -270,14 +270,14 @@ def do_vg_evaluation(
 
             return res_dict, res_str
 
-        if cfg.MODEL.DYHEAD.OV.ENABLED:
-            unseen_res_dict_all, unseen_res_str_all = unseen_eval(cfg, eval_recall, mode)
-            unseen_res_dict, unseen_res_str = unseen_eval(cfg, eval_mean_recall, mode)
-            stgw_unseen_res_dict, stgw_unseen_res_str = unseen_stagewise_eval(eval_stagewise_recall, mode)
+        # if cfg.MODEL.DYHEAD.OV.ENABLED:
+        #     unseen_res_dict_all, unseen_res_str_all = unseen_eval(cfg, eval_recall, mode)
+        #     unseen_res_dict, unseen_res_str = unseen_eval(cfg, eval_mean_recall, mode)
+        #     stgw_unseen_res_dict, stgw_unseen_res_str = unseen_stagewise_eval(eval_stagewise_recall, mode)
 
-            result_str += unseen_res_str_all
-            result_str += unseen_res_str
-            result_str += stgw_unseen_res_str
+        #     result_str += unseen_res_str_all
+        #     result_str += unseen_res_str
+        #     result_str += stgw_unseen_res_str
         """add for seen and unseen performance"""
         
         if cfg.MODEL.ROI_RELATION_HEAD.USE_GT_BOX:
