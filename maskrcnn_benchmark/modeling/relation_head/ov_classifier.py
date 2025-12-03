@@ -21,10 +21,10 @@ from ..clip_utils import build_one_text_embedding, build_text_embedding, reduced
 def load_categorical_clip_text_embedding(dataset_name):
     DATASET_DIR = os.environ.get("DATASET_DIR", "./DATASET")
     if dataset_name == 'VG':
-        with open(f'{DATASET_DIR}/VG150/vg_cate_info.json', 'r') as f:
+        with open(f'{DATASET_DIR}/VG150/vg_cate_dict.json', 'r') as f:
             cate_info = json.load(f)
             obj_classes = cate_info["ent_cate"][:-1]
-            rel_classes = cate_info["pred_cate"][1:]
+            rel_classes = cate_info["pred_cate"]
             super_obj_classes = cate_info.get("super_ent_cate", [])
         with open(f'{DATASET_DIR}/VG150/vg_relation_aware_prompts.json', 'r') as f:
             relation_aware_prompts = json.load(f)
@@ -41,7 +41,7 @@ def load_categorical_clip_text_embedding(dataset_name):
     return obj_classes, super_obj_classes, rel_classes, relation_aware_prompts
 
 class CLIPDynamicClassifierBaseline(nn.Module):
-    def __init__(self, cfg, input_dim, clip_model, clip_preprocess):
+    def __init__(self, cfg, input_dim, clip_model, clip_preprocess, loss_type='cross_entropy'):
         super(CLIPDynamicClassifierBaseline, self).__init__()
         
         self.cfg = cfg
@@ -54,7 +54,7 @@ class CLIPDynamicClassifierBaseline(nn.Module):
         else:
             self.obj_classes = obj_classes
         self.rel_classes =  rel_classes
-
+        self.loss_type = loss_type
         self.cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
 
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07), requires_grad=False)
@@ -63,7 +63,7 @@ class CLIPDynamicClassifierBaseline(nn.Module):
         weight_list = []
         with torch.no_grad():
             print('build clip text emb tmp')
-            for pred_txt in tqdm(self.rel_classes): # N_p
+            for pred_txt in tqdm(rel_classes): # N_p
                 weight_list_rel = []
 
                 for sub_text in self.obj_classes: # N_p
@@ -83,9 +83,14 @@ class CLIPDynamicClassifierBaseline(nn.Module):
 
         if self.cfg.MODEL.DYHEAD.OV.ENABLED:
             seen_cls_weight = []
-            for cls_i in range(len(self.rel_classes)):
-                if cls_i not in self.cfg.MODEL.DYHEAD.OV.ZS_PREDICATES:
-                    seen_cls_weight.append(weight_list[cls_i])
+            if self.loss_type == 'cross_entropy':
+                for cls_i in range(len(rel_classes)):
+                    if cls_i not in self.cfg.MODEL.DYHEAD.OV.ZS_PREDICATES:
+                        seen_cls_weight.append(weight_list[cls_i])
+            else:
+                for cls_i in range(len(rel_classes[1:])):
+                    if cls_i+1 not in self.cfg.MODEL.DYHEAD.OV.ZS_PREDICATES:
+                        seen_cls_weight.append(weight_list[cls_i])
             seen_cls_weight = torch.stack(seen_cls_weight)
             # print(f'seen class weight {seen_cls_weight.shape}')
             self.classifier_cache['cls_weight_train'] = nn.Parameter(seen_cls_weight, requires_grad=False)
@@ -120,7 +125,7 @@ class CLIPDynamicClassifierBaseline(nn.Module):
         return cls_res
 
 class CLIPDynamicClassifierSimple(nn.Module):
-    def __init__(self, cfg, input_dim, clip_model, clip_preprocess):
+    def __init__(self, cfg, input_dim, clip_model, clip_preprocess, loss_type='cross_entropy'):
         super(CLIPDynamicClassifierSimple, self).__init__()
         
         self.cfg = cfg
@@ -132,7 +137,7 @@ class CLIPDynamicClassifierSimple(nn.Module):
             self.obj_classes = super_obj_classes
         else:
             self.obj_classes = obj_classes
-        self.rel_classes =  rel_classes
+        self.loss_type = loss_type
 
         self.cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
 
@@ -140,9 +145,10 @@ class CLIPDynamicClassifierSimple(nn.Module):
         
         self.text_encoder = TextEncoder(clip_model)
         entity_aware_weight_list = []
+        # entity_aware_weight_list 可以在第一次计算时保存下来，后续从本地存储中load，加快训练速度
         with torch.no_grad():
             print('build clip text emb tmp')
-            for pred_txt in tqdm(self.rel_classes): # N_p
+            for pred_txt in tqdm(rel_classes): # N_p, note that rel_classes may contain the 'background' class if use cs loss
                 weight_list_rel = []
 
                 for sub_text in self.obj_classes: # N_p
@@ -154,25 +160,26 @@ class CLIPDynamicClassifierSimple(nn.Module):
                         trp_templete_w = trp_templete_w / trp_templete_w.norm(dim=-1, keepdim=True)
                         weight_list_rel.append(trp_templete_w)
                 entity_aware_weight_list.append(torch.stack(weight_list_rel))
+        
 
 
-        if cfg.DYNAMIC_CLIP_CLASSIFIER_WEIGHT_CACHE_PTH != '':
-            relation_aware_weight_list = torch.load(cfg.DYNAMIC_CLIP_CLASSIFIER_WEIGHT_CACHE_PTH)
+        if cfg.MODEL.DYHEAD.OV.DYNAMIC_CLIP_CLASSIFIER_WEIGHT_CACHE_PTH != '':
+            relation_aware_weight_list = torch.load(cfg.MODEL.DYHEAD.OV.DYNAMIC_CLIP_CLASSIFIER_WEIGHT_CACHE_PTH)
         else:
             raise ValueError("DYNAMIC_CLIP_CLASSIFIER_WEIGHT_CACHE_PTH cannot be empty")
-            relation_aware_weight_list = generate_relation_aware_weight(self.rel_classes, self.obj_classes, relation_aware_prompts, self.text_encoder)
+            relation_aware_weight_list = generate_relation_aware_weight(rel_classes[1:], self.obj_classes, relation_aware_prompts, self.text_encoder)
 
         # relation_aware_weight_list List[ List[Tensor], len = super_obj_classes * super_obj_classes]
 
-        self.relation_aware_split_index = [[] for _ in range(len(self.rel_classes))]
+        self.relation_aware_split_index = [[] for _ in range(len(rel_classes[1:]))]
         relation_aware_weight = []
-        for cls_i in range(len(self.rel_classes)): # N_p
+        for cls_i in range(len(rel_classes[1:])): # N_p
             weight_list_tmp = []
             for sub_id, sub_text in enumerate(super_obj_classes): # N_p
                 for obj_id, obj_text in enumerate(super_obj_classes):
                     self.relation_aware_split_index[cls_i].append(relation_aware_weight_list[cls_i][sub_id * len(super_obj_classes) + obj_id].shape[0])
                     weight_list_tmp.append(relation_aware_weight_list[cls_i][sub_id * len(super_obj_classes) + obj_id])
-            weight_list_tmp = torch.stack(weight_list_tmp)
+            weight_list_tmp = torch.cat(weight_list_tmp, dim=0)
             relation_aware_weight.append(weight_list_tmp)
 
         self.classifier_cache = nn.ParameterDict()
@@ -184,20 +191,24 @@ class CLIPDynamicClassifierSimple(nn.Module):
             self.relation_aware_split_index_train = []
             entity_aware_weight_list_train = []
 
-            for cls_i in range(len(self.rel_classes)):
-                if cls_i not in self.cfg.MODEL.DYHEAD.OV.ZS_PREDICATES:
-                    entity_aware_weight_list_train.append(entity_aware_weight_list[cls_i])
-
-            for cls_i in range(len(self.rel_classes)): # N_p
-                if cls_i not in self.cfg.MODEL.DYHEAD.OV.ZS_PREDICATES:
-                    relation_aware_weight_list_train.append(relation_aware_weight[cls_i])
-                    self.relation_aware_split_index_train.append(self.relation_aware_split_index[cls_i])
+            if self.loss_type == 'cross_entropy':
+                for cls_i in range(len(rel_classes)):
+                    if cls_i not in self.cfg.MODEL.DYHEAD.OV.ZS_PREDICATES:
+                        entity_aware_weight_list_train.append(entity_aware_weight_list[cls_i])
+                        if cls_i != 0:
+                            relation_aware_weight_list_train.append(relation_aware_weight[cls_i-1])
+                            self.relation_aware_split_index_train.append(self.relation_aware_split_index[cls_i-1])
+            else:
+                for cls_i in range(len(rel_classes[1:])):
+                    if cls_i+1 not in self.cfg.MODEL.DYHEAD.OV.ZS_PREDICATES:
+                        entity_aware_weight_list_train.append(entity_aware_weight_list[cls_i])
+                        relation_aware_weight_list_train.append(relation_aware_weight[cls_i])
+                        self.relation_aware_split_index_train.append(self.relation_aware_split_index[cls_i])
 
             self.classifier_cache['entity_aware_weight_train'] = nn.Parameter(torch.stack(entity_aware_weight_list_train), requires_grad=False)
             self.relation_aware_weight_train = relation_aware_weight_list_train
-
     
-    def forward(self, rel_hs, union_features=None, tree_features=None):
+    def forward(self, rel_hs, union_features=None):
         # classification with embedding by matching
         inter_hs = rel_hs
         # cosine distance
@@ -219,16 +230,26 @@ class CLIPDynamicClassifierSimple(nn.Module):
         # entity-aware prompt scpre
         entity_aware_weight = entity_aware_weight / entity_aware_weight.norm(dim=-1, keepdim=True)
         dis_mat_entity = (inter_hs_norm @ entity_aware_weight.permute(2, 0, 1).reshape(inter_hs_norm.shape[-1], -1)) # num_inst,dim x Num_pred, num_ent, dim => num_inst, Num_pred, num_ent
-        class_num = entity_aware_weight.shape[0]
-        dis_mat_entity = dis_mat_entity.reshape((dis_mat_entity.shape[0], class_num, -1))
+        class_num_for_ent = entity_aware_weight.shape[0]
+        dis_mat_entity = dis_mat_entity.reshape((dis_mat_entity.shape[0], class_num_for_ent, -1))
 
         # relation-aware prompt scpre
         union_features_norm = union_features / union_features.norm(dim=-1, keepdim=True)
-        # relation_aware_weight = relation_aware_weight / relation_aware_weight.norm(dim=-1, keepdim=True)
-        dis_mat_relation = self.compute_scores(union_features_norm, relation_aware_weight, relation_aware_split_index, class_num, self.cfg.MODEL.DYHEAD.OV.PROMPT_SELECT_K)
+        class_num_for_rel = entity_aware_weight.shape[0] - 1 if self.loss_type == 'cross_entropy' else entity_aware_weight.shape[0]
+        dis_mat_relation = self.compute_scores(union_features_norm, relation_aware_weight, relation_aware_split_index, class_num_for_rel, self.cfg.MODEL.DYHEAD.OV.PROMPT_SELECT_K)
 
         # final predicate score
-        cls_res = dis_mat_entity.max(-1)[0] * (1 - self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT) + dis_mat_relation.max(-1)[0] * self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT# num_inst, Num_pred
+        if self.loss_type == 'cross_entropy':
+            cls_res = torch.zeros((dis_mat_entity.shape[0], class_num_for_ent), device=dis_mat_entity.device, dtype=dis_mat_entity.dtype)
+            # Processing background class
+            cls_res[:, 0] = dis_mat_entity[:, 0, :].max(-1)[0]
+            # other relation class
+            cls_res[:, 1:] = (
+                dis_mat_entity[:, 1:, :].max(-1)[0] * (1 - self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT) + 
+                dis_mat_relation.max(-1)[0] * self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT
+            )
+        else:
+            cls_res = dis_mat_entity.max(-1)[0] * (1 - self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT) + dis_mat_relation.max(-1)[0] * self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT# num_inst, Num_pred
 
         return cls_res
     
@@ -254,8 +275,8 @@ class CLIPDynamicClassifierSimple(nn.Module):
             dis_mat_rel_split_max = torch.stack(dis_mat_rel_split_max, dim=-1)
             dis_mat_rel_all.append(dis_mat_rel_split_max)
 
-        dis_mat_rel_all = torch.stack(dis_mat_rel_all, dim=-1)
-        dis_mat_rel_all = dis_mat_rel_all.transpose(0, 1)
+        dis_mat_rel_all = torch.stack(dis_mat_rel_all, dim=-1) # num_inst, num_ent*num_ent, num_pred
+        dis_mat_rel_all = dis_mat_rel_all.transpose(1, 2) # num_inst, num_ent*num_ent, num_pred => num_inst,  num_pred, num_ent*num_ent
         return dis_mat_rel_all
     
 
