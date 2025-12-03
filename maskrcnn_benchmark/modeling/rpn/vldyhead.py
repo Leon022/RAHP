@@ -20,7 +20,7 @@ from transformers.models.bert.modeling_bert import BertConfig, BertAttention, Be
 from transformers.modeling_utils import apply_chunking_to_forward
 import torch.utils.checkpoint as checkpoint
 import numpy as np
-import mathz
+import math
 
 from maskrcnn_benchmark.modeling.language_backbone.clip_model import QuickGELU, LayerNorm, DropPath
 from timm.models.layers import DropPath, trunc_normal_
@@ -1201,12 +1201,19 @@ class VLDyHeadModule(torch.nn.Module):
                         with torch.no_grad():
                             target_clip_outs = self.clip_model.encode_image(target_clip_inputs)
                             target_clip_feats.append(target_clip_outs.float())
+                    target_clip_feats = torch.cat(target_clip_feats)
 
                     if self.clip_dynamic_classifier is not None:
                         # 原来的维度 num_q x bz x dim
                         rel_clip_hs = self.clip_linear(all_pair_reps_refine)
-                        rel_cls_logits = self.clip_dynamic_classifier(
-                            rel_clip_hs)  # num_pair, 51
+                        if self.cfg.MODEL.DYHEAD.OV.DYNAMIC_CLIP_CLASSIFIER:
+                            num_rels_tensor = torch.tensor(num_rels, device=target_clip_feats.device)
+                            target_clip_feats_expanded = target_clip_feats.repeat_interleave(num_rels_tensor, dim=0)
+                            rel_cls_logits = self.clip_dynamic_classifier(
+                                rel_clip_hs, target_clip_feats_expanded)  # num_pair, 51
+                        else:
+                            rel_cls_logits = self.clip_dynamic_classifier(
+                                rel_clip_hs) 
                     else:
                         rel_clip_hs = all_pair_reps
                         if self.cfg.MODEL.DYHEAD.OV.CLIP_FEAT_DISTILLATION:
@@ -1216,7 +1223,6 @@ class VLDyHeadModule(torch.nn.Module):
 
                     rel_cls_logits = rel_cls_logits.type(torch.float32)
                     if self.cfg.MODEL.DYHEAD.OV.CLIP_FEAT_DISTILLATION:
-                        target_clip_feats = torch.cat(target_clip_feats)
                         rel_clip_hs_split = rel_clip_hs.split(num_rels, dim=0)
                         rel_clip_hs_distillation = []
                         for rel_clip_hs_split_i in rel_clip_hs_split:
@@ -1301,6 +1307,23 @@ class VLDyHeadModule(torch.nn.Module):
                                        sgg_mode=self.cfg.MODEL.DYHEAD.SGG_MODE,
                                        targets=targets)
 
+        raw_images = [images.tensors[i] for i in range(images.tensors.shape[0])]
+        proc_imgs = []
+        raw_imgs = []
+        target_clip_feats = []
+        from PIL import Image
+        if self.cfg.MODEL.DYHEAD.OV.FEAT_DISTILLATION_MODEL == 'clip':
+            for each_raw_img in raw_images:
+                each_img = Image.fromarray(each_raw_img.permute(
+                    1, 2, 0).cpu().numpy().astype('uint8'), mode="RGB")
+                raw_imgs.append(each_img)
+                proc_imgs.append(self.clip_preprocess(each_img).unsqueeze(0))
+            target_clip_inputs = torch.cat(proc_imgs).to(fused_visual_features[-1].device)
+            with torch.no_grad():
+                target_clip_outs = self.clip_model.encode_image(target_clip_inputs)
+                target_clip_feats.append(target_clip_outs.float())
+        target_clip_feats = torch.cat(target_clip_feats)
+
         if self.cfg.MODEL.DYHEAD.RELATION_CONSISTENCY_ON:
             if self.cfg.MODEL.DYHEAD.RELATION_REP_REFINER:
                 memory_inputs = []
@@ -1340,13 +1363,22 @@ class VLDyHeadModule(torch.nn.Module):
                     relateness = relateness[resample_inds]
                     pair_reps_refine = self.relation_rep_refiner(pair_reps.unsqueeze(1), memory_inputs[img_id:img_id+1].permute(1,0,2))[:, 0]
 
-                # SGTR + CLIP
+                # CLIP
                 if self.cfg.MODEL.DYHEAD.OV.ENABLED:
                     if pair_reps_refine.size(0) == 0:
                         relation_logits = torch.zeros((0, 51)).to(head_tail_reps.device)
                     else:
                         rel_clip_hs = self.clip_linear(pair_reps_refine)  # all_pair_reps_refine: shape: num_pair x 256, rel_clip_hs :shape: num_pair x 512
-                        relation_logits = self.clip_dynamic_classifier(rel_clip_hs)  # bs x 50
+                        if self.cfg.MODEL.DYHEAD.OV.DYNAMIC_CLIP_CLASSIFIER:
+                            num_rels_tensor = torch.tensor(rel_clip_hs.shape[0], device=target_clip_feats.device)
+                            each_target_clip_feats = target_clip_feats[img_id].unsqueeze(0)
+                            target_clip_feats_expanded = each_target_clip_feats.repeat_interleave(num_rels_tensor, dim=0)
+                            relation_logits = self.clip_dynamic_classifier(
+                                rel_clip_hs, target_clip_feats_expanded)  # num_pair, 51
+                        else:
+                            relation_logits = self.clip_dynamic_classifier(
+                                rel_clip_hs) 
+                        # relation_logits = self.clip_dynamic_classifier(rel_clip_hs)  # bs x 50
                 else:
                     relation_logits = self.relation_semantic_embed(pair_reps_refine) # bs x 51
 
