@@ -3,6 +3,9 @@
 ## Introductionp
 Our paper ["Relation-aware Hierarchical Prompt for Open-vocabulary Scene Graph Generation"](https://arxiv.org/abs/2412.19021) AAAI 2025.
 
+### Update
+- [2025.12.05] Add `background` class support in `tools/generate_relation_aware_embedding.py` to fix potential `NaN` loss.
+- [2025.12.05] Add `loss_type` check in `maskrcnn_benchmark/modeling/relation_head/ov_classifier.py` to ensure correct loss calculation.
 
 ## Installation and Setup
 
