@@ -160,7 +160,6 @@ class CLIPDynamicClassifierSimple(nn.Module):
                         trp_templete_w = trp_templete_w / trp_templete_w.norm(dim=-1, keepdim=True)
                         weight_list_rel.append(trp_templete_w)
                 entity_aware_weight_list.append(torch.stack(weight_list_rel))
-        
 
 
         if cfg.MODEL.DYHEAD.OV.DYNAMIC_CLIP_CLASSIFIER_WEIGHT_CACHE_PTH != '':
@@ -171,16 +170,28 @@ class CLIPDynamicClassifierSimple(nn.Module):
 
         # relation_aware_weight_list List[ List[Tensor], len = super_obj_classes * super_obj_classes]
 
-        self.relation_aware_split_index = [[] for _ in range(len(rel_classes[1:]))]
-        relation_aware_weight = []
-        for cls_i in range(len(rel_classes[1:])): # N_p
-            weight_list_tmp = []
-            for sub_id, sub_text in enumerate(super_obj_classes): # N_p
-                for obj_id, obj_text in enumerate(super_obj_classes):
-                    self.relation_aware_split_index[cls_i].append(relation_aware_weight_list[cls_i][sub_id * len(super_obj_classes) + obj_id].shape[0])
-                    weight_list_tmp.append(relation_aware_weight_list[cls_i][sub_id * len(super_obj_classes) + obj_id])
-            weight_list_tmp = torch.cat(weight_list_tmp, dim=0)
-            relation_aware_weight.append(weight_list_tmp)
+        if self.loss_type == 'cross_entropy':
+            self.relation_aware_split_index = [[] for _ in range(len(rel_classes))]
+            relation_aware_weight = []
+            for cls_i in range(len(rel_classes)): # N_p
+                weight_list_tmp = []
+                for sub_id, sub_text in enumerate(super_obj_classes): # N_p
+                    for obj_id, obj_text in enumerate(super_obj_classes):
+                        self.relation_aware_split_index[cls_i].append(relation_aware_weight_list[cls_i][sub_id * len(super_obj_classes) + obj_id].shape[0])
+                        weight_list_tmp.append(relation_aware_weight_list[cls_i][sub_id * len(super_obj_classes) + obj_id])
+                weight_list_tmp = torch.cat(weight_list_tmp, dim=0)
+                relation_aware_weight.append(weight_list_tmp)
+        else:
+            self.relation_aware_split_index = [[] for _ in range(len(rel_classes[1:]))]
+            relation_aware_weight = []
+            for cls_i in range(len(rel_classes[1:])): # N_p
+                weight_list_tmp = []
+                for sub_id, sub_text in enumerate(super_obj_classes): # N_p
+                    for obj_id, obj_text in enumerate(super_obj_classes):
+                        self.relation_aware_split_index[cls_i+1].append(relation_aware_weight_list[cls_i+1][sub_id * len(super_obj_classes) + obj_id].shape[0])
+                        weight_list_tmp.append(relation_aware_weight_list[cls_i+1][sub_id * len(super_obj_classes) + obj_id])
+                weight_list_tmp = torch.cat(weight_list_tmp, dim=0)
+                relation_aware_weight.append(weight_list_tmp)
 
         self.classifier_cache = nn.ParameterDict()
         self.classifier_cache['entity_aware_weight'] = nn.Parameter(torch.stack(entity_aware_weight_list), requires_grad=False) # Num_pred * num_ent^2 * hdim
@@ -195,9 +206,8 @@ class CLIPDynamicClassifierSimple(nn.Module):
                 for cls_i in range(len(rel_classes)):
                     if cls_i not in self.cfg.MODEL.DYHEAD.OV.ZS_PREDICATES:
                         entity_aware_weight_list_train.append(entity_aware_weight_list[cls_i])
-                        if cls_i != 0:
-                            relation_aware_weight_list_train.append(relation_aware_weight[cls_i-1])
-                            self.relation_aware_split_index_train.append(self.relation_aware_split_index[cls_i-1])
+                        relation_aware_weight_list_train.append(relation_aware_weight[cls_i])
+                        self.relation_aware_split_index_train.append(self.relation_aware_split_index[cls_i])
             else:
                 for cls_i in range(len(rel_classes[1:])):
                     if cls_i+1 not in self.cfg.MODEL.DYHEAD.OV.ZS_PREDICATES:
@@ -232,6 +242,7 @@ class CLIPDynamicClassifierSimple(nn.Module):
         dis_mat_entity = (inter_hs_norm @ entity_aware_weight.permute(2, 0, 1).reshape(inter_hs_norm.shape[-1], -1)) # num_inst,dim x Num_pred, num_ent, dim => num_inst, Num_pred, num_ent
         class_num_for_ent = entity_aware_weight.shape[0]
         dis_mat_entity = dis_mat_entity.reshape((dis_mat_entity.shape[0], class_num_for_ent, -1))
+        dis_mat_entity = dis_mat_entity * self.logit_scale.exp()
 
         # relation-aware prompt scpre
         union_features_norm = union_features / union_features.norm(dim=-1, keepdim=True)
@@ -245,12 +256,11 @@ class CLIPDynamicClassifierSimple(nn.Module):
             cls_res[:, 0] = dis_mat_entity[:, 0, :].max(-1)[0]
             # other relation class
             cls_res[:, 1:] = (
-                dis_mat_entity[:, 1:, :].max(-1)[0] * (1 - self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT) + 
-                dis_mat_relation.max(-1)[0] * self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT
+                dis_mat_entity[:, 1:, :].max(-1)[0] * (1 - self.cfg.MODEL.DYHEAD.OV.RELATION_PROMPT_WEIGHT) + 
+                dis_mat_relation.max(-1)[0] * self.cfg.MODEL.DYHEAD.OV.RELATION_PROMPT_WEIGHT
             )
         else:
-            cls_res = dis_mat_entity.max(-1)[0] * (1 - self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT) + dis_mat_relation.max(-1)[0] * self.cfg.MODEL.DYHEAD.OV.VLM_BIAS_WEIGHT# num_inst, Num_pred
-
+            cls_res = dis_mat_entity.max(-1)[0] * (1 - self.cfg.MODEL.DYHEAD.OV.RELATION_PROMPT_WEIGHT) + dis_mat_relation.max(-1)[0] * self.cfg.MODEL.DYHEAD.OV.RELATION_PROMPT_WEIGHT# num_inst, Num_pred
         return cls_res
     
     def compute_scores(self, inter_hs, relation_aware_weight, relation_aware_split_index, class_num, selct_top_k=3):
