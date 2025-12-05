@@ -250,17 +250,7 @@ class CLIPDynamicClassifierSimple(nn.Module):
         dis_mat_relation = self.compute_scores(union_features_norm, relation_aware_weight, relation_aware_split_index, class_num_for_rel, self.cfg.MODEL.DYHEAD.OV.PROMPT_SELECT_K)
 
         # final predicate score
-        if self.loss_type == 'cross_entropy':
-            cls_res = torch.zeros((dis_mat_entity.shape[0], class_num_for_ent), device=dis_mat_entity.device, dtype=dis_mat_entity.dtype)
-            # Processing background class
-            cls_res[:, 0] = dis_mat_entity[:, 0, :].max(-1)[0]
-            # other relation class
-            cls_res[:, 1:] = (
-                dis_mat_entity[:, 1:, :].max(-1)[0] * (1 - self.cfg.MODEL.DYHEAD.OV.RELATION_PROMPT_WEIGHT) + 
-                dis_mat_relation.max(-1)[0] * self.cfg.MODEL.DYHEAD.OV.RELATION_PROMPT_WEIGHT
-            )
-        else:
-            cls_res = dis_mat_entity.max(-1)[0] * (1 - self.cfg.MODEL.DYHEAD.OV.RELATION_PROMPT_WEIGHT) + dis_mat_relation.max(-1)[0] * self.cfg.MODEL.DYHEAD.OV.RELATION_PROMPT_WEIGHT# num_inst, Num_pred
+        cls_res = dis_mat_entity.max(-1)[0] * (1 - self.cfg.MODEL.DYHEAD.OV.RELATION_PROMPT_WEIGHT) + dis_mat_relation.max(-1)[0] * self.cfg.MODEL.DYHEAD.OV.RELATION_PROMPT_WEIGHT# num_inst, Num_pred
         return cls_res
     
     def compute_scores(self, inter_hs, relation_aware_weight, relation_aware_split_index, class_num, selct_top_k=3):
