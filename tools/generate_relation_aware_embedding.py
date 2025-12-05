@@ -78,7 +78,7 @@ def load_categorical_clip_text_embedding(dataset_name: str, dataset_dir: str):
     
     if dataset_name == "VG":
         obj_classes = cate_info["ent_cate"][:-1]  
-        rel_classes = cate_info["pred_cate"][1:]   
+        rel_classes = cate_info["pred_cate"]   
         super_obj_classes = cate_info.get("super_ent_cate", [])
     else:  # OIV6
         obj_classes = cate_info["obj"]
@@ -116,14 +116,18 @@ def generate_relation_aware_weight(
         rel_weight = []
         for sub in obj_classes:
             for obj in obj_classes:
-                triplet_key = f"{sub}_{rel}_{obj}"
-                if triplet_key not in relation_aware_prompts:
-                    raise KeyError(f"Miss relation triplet: {triplet_key}")
-                
-                prompts = relation_aware_prompts[triplet_key]
-                embed, _ = build_batch_text_embedding(prompts, text_encoder)
+                if rel == '__background__':
+                    embed, _ = build_batch_text_embedding([f"There is no relation between {sub} and {obj}"], text_encoder)
+                else:
+                    triplet_key = f"{sub}_{rel}_{obj}"
+                    if triplet_key not in relation_aware_prompts:
+                        raise KeyError(f"Miss relation triplet: {triplet_key}")
+                    
+                    prompts = relation_aware_prompts[triplet_key]
+                    embed, _ = build_batch_text_embedding(prompts, text_encoder)
                 rel_weight.append(embed)
         weight_list.append(rel_weight)
+    print(f"[INFO] Generate {len(rel_classes)} relation-aware embeddings...")
     return weight_list
 
 
